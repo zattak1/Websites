@@ -1,0 +1,29 @@
+-- Websites plugin — flattened POSTGRES DDL
+-- {{prefix}} is substituted by Qbix at install time.
+
+CREATE TABLE IF NOT EXISTS {{prefix}}article (
+    publisherId BYTEA NOT NULL,
+    streamName BYTEA NOT NULL,
+    userId BYTEA NOT NULL,
+    article text NOT NULL,
+    PRIMARY KEY (publisherId,streamName)
+);
+
+CREATE TABLE IF NOT EXISTS {{prefix}}permalink (
+    uri BYTEA NOT NULL DEFAULT '',
+    url BYTEA NOT NULL DEFAULT '',
+    insertedTime timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+    updatedTime timestamp NULL DEFAULT NULL,
+    PRIMARY KEY (uri)
+);
+
+CREATE TABLE IF NOT EXISTS {{prefix}}webpage (
+    url varchar(191) NOT NULL,
+    cache varchar(255) DEFAULT NULL,
+    insertedTime timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updatedTime timestamp NULL DEFAULT NULL,
+    results text DEFAULT NULL,
+    PRIMARY KEY (url)
+);
+
+-- Indexes

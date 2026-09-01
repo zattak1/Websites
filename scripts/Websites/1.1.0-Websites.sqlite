@@ -1,0 +1,32 @@
+-- Websites plugin — flattened SQLITE DDL
+-- {{prefix}} is substituted by Qbix at install time.
+
+CREATE TABLE {{prefix}}article (
+    publisherId TEXT DEFAULT '',
+    streamName TEXT DEFAULT '',
+    userId TEXT DEFAULT '',
+    article text NOT NULL,
+    getintouch TEXT DEFAULT '',
+    duration INTEGER DEFAULT NULL,
+    PRIMARY KEY (publisherId,streamName)
+);
+
+CREATE TABLE {{prefix}}permalink (
+    uri TEXT DEFAULT '',
+    url TEXT DEFAULT '',
+    insertedTime TEXT NULL DEFAULT CURRENT_TIMESTAMP,
+    updatedTime TEXT NULL DEFAULT NULL,
+    PRIMARY KEY (uri)
+);
+
+CREATE TABLE IF NOT EXISTS {{prefix}}webpage (
+    url TEXT DEFAULT '',
+    cache TEXT DEFAULT NULL,
+    insertedTime TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updatedTime TEXT NULL DEFAULT NULL,
+    results text DEFAULT NULL,
+    duration INTEGER DEFAULT NULL,
+    PRIMARY KEY (url)
+);
+
+-- Indexes
