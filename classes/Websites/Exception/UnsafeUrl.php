@@ -3,7 +3,7 @@
 /**
  * @module Websites
  */
-class Websites_Exception_UnsafeUrl extends Q_Exception
+class Websites_Exception_UnsafeUrl extends Q_Exception_UnsafeUrl
 {
 	/**
 	 * Raised when a URL the server was asked to fetch is not http(s), or its
@@ -11,7 +11,7 @@ class Websites_Exception_UnsafeUrl extends Q_Exception
 	 * multicast address (directly or through a redirect).
 	 * @class Websites_Exception_UnsafeUrl
 	 * @constructor
-	 * @extends Q_Exception
+	 * @extends Q_Exception_UnsafeUrl
 	 */
 };
 
