@@ -72,21 +72,26 @@ class Websites_File extends Base_Websites_Webpage
 			$quota = Users_Quota::check($asUserId, '', "Websites/cache", true, 1, array_keys($roles));
 		}
 
-		$headers = get_headers($url, 1);
-		$headers = array_change_key_case($headers, CASE_LOWER);
-
 		$cacheFileLimit = (int)Q_Config::get("Websites", "cacheFileLimit", 5242880);
 		$text = Q_Text::get("Websites/content");
 		$errorFileSize = Q::interpolate($text["webpage"]["FileTooLarge"], array('size' => self::formatBytes($cacheFileLimit)));
 
-		if ((int)$headers['content-length'] > $cacheFileLimit) {
+		// One request through Websites_Fetch (http(s) only, no private
+		// targets on any hop, TLS verified), replacing get_headers()
+		// and an fopen() of the user's URL. One byte over the limit is enough
+		// to know the file is too large.
+		$response = Websites_Fetch::get($url, array('maxBytes' => $cacheFileLimit + 1));
+		if ($response['status'] < 200 || $response['status'] >= 400) {
+			throw new Exception("Unable to access the file");
+		}
+		if ((int)Q::ifset($response, 'headers', 'content-length', 0) > $cacheFileLimit
+		or $response['truncated']) {
 			throw new Exception($errorFileSize);
 		}
 
-		//$fileInfo = Websites_Webpage::getRemoteFileInfo($url, $cacheFileLimit, false);
 		$tmpFile = tmpfile();
 		$tmpPath = stream_get_meta_data($tmpFile)['uri'];
-		fwrite($tmpFile, Websites_Webpage::readURL($url, $cacheFileLimit * 1.2));
+		fwrite($tmpFile, $response['body']);
 		$fileSize = filesize($tmpPath);
 		if ($fileSize > $cacheFileLimit) {
 			@fclose($tmpFile);
