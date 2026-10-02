@@ -67,9 +67,8 @@ class Websites_Webpage extends Base_Websites_Webpage
 		$response = Websites_Fetch::get($url, array(
 			'maxBytes' => Q_Config::get('Websites', 'scrape', 'maxBytes', 2097152)
 		));
-		if ($response['status'] >= 400 || $response['status'] < 200) {
-			throw new Exception("Unable to access the site");
-		}
+		// (an error status is not refused: as before, whatever page came back
+		// is parsed, since some sites answer bots 403 with full metadata)
 		$url = $response['url'];
 		$headers = $response['headers'];
 		$contentType = Q::ifset($headers, 'content-type', 'text/html');
