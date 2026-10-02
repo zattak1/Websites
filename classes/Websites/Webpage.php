@@ -59,40 +59,23 @@ class Websites_Webpage extends Base_Websites_Webpage
 			return $cached;
 		}
 
-		$headers = get_headers($url, 1);
-		if ($headers) {
-			for ($i=0; $i<5; ++$i) {
-				if ($header = Q::ifset($headers, 0, '')
-				and (preg_match('/HTTP.*\ 301/', $header)
-				     or preg_match('/HTTP.*\ 302/', $header))) {
-					// Do up to 5 redirects
-					if (empty($headers['Location'])) {
-						throw new Q_Exception("Redirect to empty location");
-					}
-					$url = self::normalizeHref(
-						is_array($headers['Location'])
-							? end($headers['Location'])
-							: $headers['Location'],
-						$url
-					);
-					$headers = get_headers($url, 1);
-				} else {
-					break;
-				}
-			}
-			$headers = array_change_key_case($headers, CASE_LOWER);
-			if (is_array($headers['content-type'])) {
-				$contentType = end($headers['content-type']);
-			} else {
-				$contentType = $headers['content-type'];
-			}
-		} else {
-			$contentType = "text/html";
-		}
+		// One request, through Websites_Fetch: http(s) only, no private or
+		// loopback targets on any hop, redirects re-checked, TLS verified
+		// (ro#1028). It replaces get_headers() + file_get_contents() +
+		// Q_Utils::get() with verification off, each of which fetched the
+		// user's URL (and followed its redirects) with no such checks.
+		$response = Websites_Fetch::get($url, array(
+			'maxBytes' => Q_Config::get('Websites', 'scrape', 'maxBytes', 2097152)
+		));
+		// (an error status is not refused: as before, whatever page came back
+		// is parsed, since some sites answer bots 403 with full metadata)
+		$url = $response['url'];
+		$headers = $response['headers'];
+		$contentType = Q::ifset($headers, 'content-type', 'text/html');
 
         // for non text/html content use another approach
         if (!stristr($contentType, 'text/html')) {
-            $fileInfo = self::getRemoteFileInfo($url);
+            $fileInfo = self::_fileInfoFromResponse($response, 65536);
 
             $extension = Q::ifset($fileInfo, 'fileformat', Q::ifset($fileInfo, 'mime_type', strtolower(pathinfo($url, PATHINFO_EXTENSION))));
             $extension = preg_replace("/.*\//", '', $extension);
@@ -116,25 +99,10 @@ class Websites_Webpage extends Base_Websites_Webpage
             return self::_returnScrape($originalUrl, $url, $result);
         }
 
-		// If http response header mentions that content is gzipped, then uncompress it
-		$gzip = false;
-		foreach ($http_response_header as $item) {
-			if(stristr($item, 'content-encoding') && stristr($item, 'gzip')) {
-				//Now lets uncompress the compressed data
-				$gzip = true;
-				$document = file_get_contents($url);
-				$document = gzinflate(substr($document,10,-8) );
-				break;
-			}
-		}
-		if (!$gzip) {
-			$document = Q_Utils::get($url, null, array(
-				CURLOPT_SSL_VERIFYPEER => false,
-				CURLOPT_SSL_VERIFYHOST => false
-			));
-			if (!$document) {
-				throw new Exception("Unable to access the site");
-			}
+		// curl decodes gzip/deflate itself (CURLOPT_ENCODING)
+		$document = $response['body'];
+		if (!$document) {
+			throw new Exception("Unable to access the site");
 		}
 
 		$doc = new DOMDocument();
@@ -611,6 +579,7 @@ class Websites_Webpage extends Base_Websites_Webpage
     }
 	/**
 	 * Get limited data from remote url
+	 * (through Websites_Fetch: http(s) only, no private targets; ro#1028)
 	 * @method readURL
 	 * @static
 	 * @param {string} $url
@@ -619,33 +588,15 @@ class Websites_Webpage extends Base_Websites_Webpage
 	 * @return string
 	 */
 	static function readURL ($url, $dataLimit = 65536) {
-		if (!$urlp = fopen($url, "r")) {
+		$response = Websites_Fetch::get($url, array('maxBytes' => (int)$dataLimit));
+		if ($response['status'] < 200 || $response['status'] >= 400) {
 			throw new Q_Exception('Error opening URL for reading');
 		}
-
-		$data = null;
-
-		try {
-			$chunk_size = 4096; // Haven't bothered to tune this, maybe other values would work better??
-			$got = 0;
-
-			// Grab the first 64 KB of the file	
-			while(!feof($urlp) && $got < $dataLimit) {
-				$data = $data . fgets($urlp, $chunk_size);
-				$got = strlen($data);
-			}
-
-			// Now $fp should be the first and last 64KB of the file!!
-			@fclose($urlp);
-		} catch (Exception $e) {
-			@fclose($urlp);
-			throw new Q_Exception('Error reading remote file using fopen');
-		}
-
-		return $data;
+		return $response['body'];
 	}
     /**
      * Get meta data from remote file by url
+     * (through Websites_Fetch: http(s) only, no private targets; ro#1028)
      * @method getRemoteFileInfo
      * @static
      * @param {string} $url
@@ -655,30 +606,40 @@ class Websites_Webpage extends Base_Websites_Webpage
      * @return {array} Array of "name", "comments", "fileHandler"
      */
     static function getRemoteFileInfo ($url, $dataLimit = 65536, $closeFile = true) {
-        if (!$urlp = fopen($url, "r")) {
+        $response = Websites_Fetch::get($url, array('maxBytes' => (int)$dataLimit));
+        if ($response['status'] < 200 || $response['status'] >= 400) {
             throw new Q_Exception('Error opening URL for reading');
         }
-        $file = tmpfile();
-        $data = stream_get_meta_data($file);
-		$path = $data['uri'];
+        return self::_fileInfoFromResponse($response, $dataLimit, $closeFile);
+    }
+
+    /**
+     * Fetch $url through Websites_Fetch into a temporary file, call
+     * $callback with its path, and remove the file afterwards.
+     * @method _withFetchedFile
+     * @static
+     * @private
+     */
+    private static function _withFetchedFile ($url, $callback) {
+        $path = Websites_Fetch::toTempFile($url);
         try {
-            $chunk_size = 4096; // Haven't bothered to tune this, maybe other values would work better??
-            $got = 0; $data = null;
-
-            // Grab the first 64 KB of the file
-            while(!feof($urlp) && $got < $dataLimit) {
-                $data = $data . fgets($urlp, $chunk_size);
-                $got = strlen($data);
-            }
-            fwrite($file, $data);  // Grab the last 64 KB of the file, if we know how big it is.  if ($size > 0) {
-
-            // Now $fp should be the first and last 64KB of the file!!
-            @fclose($urlp);
-        } catch (Exception $e) {
-            @fclose($file);
-            @fclose($urlp);
-            throw new Q_Exception('Error reading remote file using fopen');
+            return call_user_func($callback, $path);
+        } finally {
+            @unlink($path);
         }
+    }
+
+    /**
+     * getRemoteFileInfo() on a response already fetched by Websites_Fetch::get()
+     * @method _fileInfoFromResponse
+     * @static
+     * @private
+     */
+    private static function _fileInfoFromResponse ($response, $dataLimit = 65536, $closeFile = true) {
+        $url = $response['url'];
+        $file = tmpfile();
+        $path = stream_get_meta_data($file)['uri'];
+        fwrite($file, substr($response['body'], 0, $dataLimit));
 
         $getID3 = new Audio_getID3();
         $metaData = $getID3->analyze($path);
@@ -693,8 +654,7 @@ class Websites_Webpage extends Base_Websites_Webpage
             $metaData['comments']['name'] = $name;
         } else {
             // try to get name from headers
-            $headers = get_headers($url, 1);
-            $contentDisposition = $headers["Content-Disposition"];
+            $contentDisposition = Q::ifset($response, 'headers', 'content-disposition', '');
             $fileName = self::getFilenameFromDisposition($contentDisposition);
             if ($fileName) {
                 $name = pathinfo($fileName, PATHINFO_FILENAME);
@@ -864,14 +824,22 @@ class Websites_Webpage extends Base_Websites_Webpage
 						$directory = $interestStream->iconDirectory();
 						Q_Utils::canWriteToPath($directory, null, true);
 						$fileName = $directory.DS.'icon.svg';
-						file_put_contents($fileName, file_get_contents($iconSmall));
+						$svg = Websites_Fetch::get($iconSmall, array('maxBytes' => 1048576));
+						if ($svg['status'] !== 200 || $svg['truncated']) {
+							throw new Q_Exception("Could not fetch the icon");
+						}
+						file_put_contents($fileName, $svg['body']);
 						$head = APP_FILES_DIR.DS.Q::app().DS.'uploads';
 						$tail = str_replace(DS, '/', substr($fileName, strlen($head)));
 						$interestStream->icon = '{{baseUrl}}/Q/uploads' . $tail;
 					} else {
-						$result = Users::importIcon($interestStream, array(
-							'32.png' => $iconSmall
-						), $interestStream->iconDirectory());
+						// Fetched here, through the checks, and handed over as
+						// a file: Users::importIcon would fetch a URL itself.
+						$result = self::_withFetchedFile($iconSmall, function ($iconFile) use ($interestStream) {
+							return Users::importIcon($interestStream, array(
+								'32.png' => $iconFile
+							), $interestStream->iconDirectory());
+						});
 					}
 				} catch (Exception $e) {
 
@@ -930,7 +898,17 @@ class Websites_Webpage extends Base_Websites_Webpage
         }
 
 		// try to import icon from $iconBig
-		Streams::importIcon($webpageStream->publisherId, $webpageStream->name, $iconBig, "Websites/image");
+		// (fetched here through Websites_Fetch and handed over as a file,
+		// since Streams::importIcon would fetch a URL itself unchecked)
+		if (Q_Valid::url($iconBig)) {
+			try {
+				self::_withFetchedFile($iconBig, function ($iconFile) use ($webpageStream) {
+					return Streams::importIcon($webpageStream->publisherId, $webpageStream->name, $iconFile, "Websites/image");
+				});
+			} catch (Exception $e) {
+				// no icon, as when the old unchecked fetch failed
+			}
+		}
 
 		// grant access to this stream for logged user
 		$streamsAccess = new Streams_Access();
@@ -1079,6 +1057,11 @@ class Websites_Webpage extends Base_Websites_Webpage
 		if (!Q_Valid::url($url)) {
 			throw new Exception("Invalid URL");
 		}
+		// Refuse non-http(s) and private/loopback targets before handing the
+		// URL to Chrome (ro#1028). This checks the first hop only: Chrome
+		// follows redirects and loads subresources itself, so the Chrome
+		// container's own network policy has to do the rest.
+		Websites_Fetch::check($url);
 
 		// Locate JS analyzers
 		if (!defined('WEBSITES_PLUGIN_WEB_DIR')) {
@@ -1255,23 +1238,18 @@ class Websites_Webpage extends Base_Websites_Webpage
 		return '/'.implode('/', $out);
 	}
 
-	// Fetch a URL body (curl preferred; falls back to file_get_contents), permissive SSL.
+	// Fetch a URL body through Websites_Fetch (http(s) only, no private
+	// targets, TLS verified; ro#1028). False if refused or unreachable.
 	private static function _fetch($url, $timeout)
 	{
-		if (function_exists('curl_init')) {
-			$ch = curl_init($url);
-			curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-			curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-			curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, $timeout);
-			curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
-			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-			curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-			$body = curl_exec($ch);
-			curl_close($ch);
-			return $body;
+		try {
+			$response = Websites_Fetch::get($url, array('timeout' => $timeout));
+		} catch (Exception $e) {
+			return false;
 		}
-		$ctx = stream_context_create(array('http' => array('timeout' => $timeout)));
-		return @file_get_contents($url, false, $ctx);
+		return ($response['status'] === 200 && !$response['truncated'])
+			? $response['body']
+			: false;
 	}
 
 	/**
