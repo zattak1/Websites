@@ -1172,15 +1172,6 @@ class Websites_Webpage extends Base_Websites_Webpage
 	}
 
 	/**
-	 * Private helper: connect to an already-running headless Chrome
-	 * (e.g., Docker container bound to 127.0.0.1:9222).
-	 *
-	 * Reads CHROME_HOST/CHROME_PORT if present.
-	 *
-	 * @return \HeadlessChromium\Browser
-	 * @throws Exception
-	 */
-	/**
 	 * Refuse analyze() for a host not in Websites/analyze/hosts (ro#1035).
 	 * @method _analyzeAllowed
 	 * @static
@@ -1211,6 +1202,15 @@ class Websites_Webpage extends Base_Websites_Webpage
 		throw $e;
 	}
 
+	/**
+	 * Private helper: connect to an already-running headless Chrome
+	 * (e.g., Docker container bound to 127.0.0.1:9222).
+	 *
+	 * Reads CHROME_HOST/CHROME_PORT if present.
+	 *
+	 * @return \HeadlessChromium\Browser
+	 * @throws Exception
+	 */
 	private static function _chromeConnect()
 	{
 		$host = getenv('CHROME_HOST') ? getenv('CHROME_HOST') : '127.0.0.1';
