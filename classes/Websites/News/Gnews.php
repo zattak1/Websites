@@ -59,7 +59,11 @@ class Websites_News_Gnews extends Websites_News implements Websites_News_Interfa
 			}
 		}
 
-		$response = Q_Utils::get($url, $params, null, null, null, 30);
+		// Q_Utils::get() has no data argument: the parameters go in the query
+		// string. This used to pass $params as the user agent and 30 as the
+		// callback, so no parameter was ever sent (ro#1058).
+		$url .= '?' . http_build_query($params, '', '&');
+		$response = Q_Utils::get($url, null, array(), null, 30);
 		$data = json_decode($response, true);
 
 		if (!is_array($data)) {
