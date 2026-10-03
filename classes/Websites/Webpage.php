@@ -589,7 +589,7 @@ class Websites_Webpage extends Base_Websites_Webpage
 	 */
 	static function readURL ($url, $dataLimit = 65536) {
 		$response = Websites_Fetch::get($url, array('maxBytes' => (int)$dataLimit));
-		if ($response['status'] < 200 || $response['status'] >= 400) {
+		if ($response['status'] < 200 || $response['status'] >= 300) {
 			throw new Q_Exception('Error opening URL for reading');
 		}
 		return $response['body'];
@@ -607,7 +607,7 @@ class Websites_Webpage extends Base_Websites_Webpage
      */
     static function getRemoteFileInfo ($url, $dataLimit = 65536, $closeFile = true) {
         $response = Websites_Fetch::get($url, array('maxBytes' => (int)$dataLimit));
-        if ($response['status'] < 200 || $response['status'] >= 400) {
+        if ($response['status'] < 200 || $response['status'] >= 300) {
             throw new Q_Exception('Error opening URL for reading');
         }
         return self::_fileInfoFromResponse($response, $dataLimit, $closeFile);
@@ -1000,6 +1000,10 @@ class Websites_Webpage extends Base_Websites_Webpage
 	 * and return computed styles, fonts, dominant colors, and nav heuristics.
 	 * Also crawls CSS (server-side) to follow @import and collect @font-face blocks.
 	 *
+	 * Only URLs on hosts listed in the Websites/analyze/hosts config are
+	 * analyzed (empty by default, so nothing is): Chrome follows redirects
+	 * and loads subresources on its own, beyond the server's fetch checks.
+	 *
 	 * @method analyze
 	 * @static
 	 * @param {string} $url The webpage URL to analyze.
@@ -1056,10 +1060,15 @@ class Websites_Webpage extends Base_Websites_Webpage
 		if (!Q_Valid::url($url)) {
 			throw new Exception("Invalid URL");
 		}
-		// Refuse non-http(s) and private/loopback targets before handing the
-		// URL to Chrome. This checks the first hop only: Chrome
-		// follows redirects and loads subresources itself, so the Chrome
-		// container's own network policy has to do the rest.
+		// Chrome follows redirects and loads subresources itself, outside
+		// Websites_Fetch, so checking this first hop is not enough to keep
+		// it off the server's own network: an allowed page can redirect to,
+		// or embed, http://169.254.169.254/. Until navigation is
+		// intercepted, only hosts the admin lists in Websites/analyze/hosts
+		// are analyzed; a leading "." allows subdomains too
+		// (".example.com"). The URL must still pass Websites_Fetch::check(),
+		// and only that checked URL reaches Chrome.
+		self::_analyzeAllowed($url);
 		Websites_Fetch::check($url);
 
 		if (!defined('WEBSITES_PLUGIN_WEB_DIR')) {
@@ -1181,6 +1190,37 @@ class Websites_Webpage extends Base_Websites_Webpage
 			}
 			throw $e;
 		}
+	}
+
+	/**
+	 * Refuse analyze() for a host not in Websites/analyze/hosts.
+	 * @method _analyzeAllowed
+	 * @static
+	 * @private
+	 * @param {string} $url
+	 * @throws {Websites_Exception_UnsafeUrl}
+	 */
+	private static function _analyzeAllowed($url)
+	{
+		$host = rtrim(strtolower((string)parse_url($url, PHP_URL_HOST)), '.');
+		foreach ((array)Q_Config::get('Websites', 'analyze', 'hosts', array()) as $allowed) {
+			$allowed = rtrim(strtolower((string)$allowed), '.');
+			if ($allowed === '' || $host === '') {
+				continue;
+			}
+			if ($allowed[0] === '.'
+				? ($host === substr($allowed, 1) || substr($host, -strlen($allowed)) === $allowed)
+				: $host === $allowed) {
+				return;
+			}
+		}
+		try {
+			Q::log("Websites_Webpage::analyze refused $url: host not in Websites/analyze/hosts", 'Websites_Fetch');
+		} catch (Throwable $e) {
+		}
+		$e = new Websites_Exception_UnsafeUrl(array('url' => $url));
+		$e->reason = 'the host is not in Websites/analyze/hosts';
+		throw $e;
 	}
 
 	/**

@@ -52,9 +52,15 @@ class Websites_Fetch
 			$target = static::check($url);
 			$response = static::_request($url, $target, $timeout, $maxBytes, $extraHeaders);
 			$status = $response['status'];
-			if ($status < 300 || $status >= 400 || empty($response['redirect'])) {
+			if ($status < 300 || $status >= 400) {
 				unset($response['redirect']);
 				return $response;
+			}
+			// A 3xx is never the resource: with no usable Location (none,
+			// or a scheme curl will not resolve) it is a failure, not a
+			// body to hand back as the file.
+			if (empty($response['redirect'])) {
+				throw new Q_Exception("Websites_Fetch: HTTP $status without a usable Location");
 			}
 			$url = $response['redirect'];
 		}
@@ -351,11 +357,22 @@ class Websites_Fetch
 		return (ord($bin[$bytes]) & $mask) === (ord($netBin[$bytes]) & $mask);
 	}
 
+	/**
+	 * The specific reason is logged and kept in the exception's $reason
+	 * property, but left out of its message and params, which reach the
+	 * client: "does not resolve" versus "non-public address" would tell a
+	 * user which internal host names exist.
+	 */
 	private static function _refuse($url, $reason)
 	{
-		throw new Websites_Exception_UnsafeUrl(array(
-			'url' => is_string($url) ? $url : gettype($url),
-			'reason' => $reason
-		));
+		$url = is_string($url) ? $url : gettype($url);
+		try {
+			Q::log("Websites_Fetch refused $url: $reason", 'Websites_Fetch');
+		} catch (Throwable $e) {
+			// logging must not turn a refusal into a different error
+		}
+		$e = new Websites_Exception_UnsafeUrl(array('url' => $url));
+		$e->reason = $reason;
+		throw $e;
 	}
 }

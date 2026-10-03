@@ -13,6 +13,16 @@ class Websites_Exception_UnsafeUrl extends Q_Exception
 	 * @constructor
 	 * @extends Q_Exception
 	 */
+
+	/**
+	 * Why the URL was refused, for logs and tests. Not in the message or
+	 * params, which reach the client.
+	 * @property $reason
+	 * @type string
+	 */
+	public $reason = null;
 };
 
-Q_Exception::add('Websites_Exception_UnsafeUrl', 'Refusing to fetch {{url}}: {{reason}}');
+// No {{reason}}: which check failed is logged, never sent to the client,
+// or a link preview would tell a user which internal hosts exist.
+Q_Exception::add('Websites_Exception_UnsafeUrl', 'Refusing to fetch {{url}}');

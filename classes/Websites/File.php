@@ -81,7 +81,7 @@ class Websites_File extends Base_Websites_Webpage
 		// and an fopen() of the user's URL. One byte over the limit is enough
 		// to know the file is too large.
 		$response = Websites_Fetch::get($url, array('maxBytes' => $cacheFileLimit + 1));
-		if ($response['status'] < 200 || $response['status'] >= 400) {
+		if ($response['status'] < 200 || $response['status'] >= 300) {
 			throw new Exception("Unable to access the file");
 		}
 		if ((int)Q::ifset($response, 'headers', 'content-length', 0) > $cacheFileLimit
