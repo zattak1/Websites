@@ -898,12 +898,15 @@ class Websites_Webpage extends Base_Websites_Webpage
         }
 
 		// try to import icon from $iconBig
-		// (fetched here through Websites_Fetch and handed over as a file,
-		// since Streams::importIcon would fetch a URL itself unchecked)
+		// (fetched here through Websites_Fetch and handed over as a file;
+		// allowPath, because importIcon reads a path only when the caller
+		// vouches that it produced the file itself: ro#1045)
 		if (Q_Valid::url($iconBig)) {
 			try {
 				self::_withFetchedFile($iconBig, function ($iconFile) use ($webpageStream) {
-					return Streams::importIcon($webpageStream->publisherId, $webpageStream->name, $iconFile, "Websites/image");
+					return Streams::importIcon($webpageStream->publisherId, $webpageStream->name, $iconFile, "Websites/image", array(
+						'allowPath' => true
+					));
 				});
 			} catch (Exception $e) {
 				// no icon, as when the old unchecked fetch failed
