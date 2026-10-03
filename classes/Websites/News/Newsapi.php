@@ -5,13 +5,20 @@
  */
 
 /**
- * EventRegistry (newsapi.ai) adapter.
+ * NewsAPI.ai adapter: EventRegistry's article API under the newsapi.ai
+ * name, and the "newsapi" provider that Websites_News::fetch() uses by
+ * default.
  *
  * Normalizes EventRegistry responses into provider-agnostic article items.
  *
- * @class Websites_News_Eventregistry
+ * This file declared Websites_News_Eventregistry, the class in
+ * Eventregistry.php, so the autoloader found no Websites_News_Newsapi here
+ * and the default provider could not load; loading both files was a fatal
+ * redeclaration (ro#1064).
+ *
+ * @class Websites_News_Newsapi
  */
-class Websites_News_Eventregistry extends Websites_News implements Websites_News_Interface
+class Websites_News_Newsapi extends Websites_News implements Websites_News_Interface
 {
 	protected $apiKey;
 	protected $endpoint = 'https://eventregistry.org/api/v1/article/getArticles';
