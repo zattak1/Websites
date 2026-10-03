@@ -15,4 +15,6 @@ class Websites_Exception_UnsafeUrl extends Q_Exception_UnsafeUrl
 	 */
 };
 
-Q_Exception::add('Websites_Exception_UnsafeUrl', 'Refusing to fetch {{url}}: {{reason}}');
+// No {{reason}}: which check failed is logged, never sent to the client,
+// or Websites/scrape would tell a member which internal hosts exist (ro#1035)
+Q_Exception::add('Websites_Exception_UnsafeUrl', 'Refusing to fetch {{url}}');

@@ -24,11 +24,8 @@ class Websites_Fetch extends Q_Fetch
 			'Mozilla/5.0 (compatible; Qbix Websites link preview)');
 	}
 
-	protected static function refuse($url, $reason)
+	protected static function exceptionClass()
 	{
-		throw new Websites_Exception_UnsafeUrl(array(
-			'url' => is_string($url) ? $url : gettype($url),
-			'reason' => $reason
-		));
+		return 'Websites_Exception_UnsafeUrl';
 	}
 }
