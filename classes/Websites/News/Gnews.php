@@ -83,6 +83,7 @@ class Websites_News_Gnews extends Websites_News implements Websites_News_Interfa
 
 	protected function normalize(array $a, $language, $country)
 	{
+		$dest = array(); // Q::take() takes it by reference (ro#1058)
 		$item = Q::take($a, array(
 			'url'         => null,
 			'title'       => null,
@@ -90,7 +91,7 @@ class Websites_News_Gnews extends Websites_News implements Websites_News_Interfa
 			'content'     => null,
 			'image'       => null,
 			'publishedAt' => null
-		), $dest = array(), array(
+		), $dest, array(
 			'description' => 'summary'
 		));
 

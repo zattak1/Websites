@@ -192,6 +192,7 @@ class Websites_News_Eventregistry extends Websites_News implements Websites_News
 
 	protected function normalize(array $a, $requestedLanguage, $requestedCountry)
 	{
+		$dest = array(); // Q::take() takes it by reference (ro#1058)
 		$item = Q::take($a, array(
 			'uri'         => null,
 			'url'         => null,
@@ -199,7 +200,7 @@ class Websites_News_Eventregistry extends Websites_News implements Websites_News
 			'body'        => null,
 			'image'       => null,
 			'dateTimePub' => null
-		), $dest = array(), array(
+		), $dest, array(
 			'body'        => 'summary',
 			'image'       => 'image',
 			'dateTimePub' => 'publishedAt'
