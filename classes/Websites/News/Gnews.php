@@ -40,8 +40,11 @@ class Websites_News_Gnews extends Websites_News implements Websites_News_Interfa
 			));
 		}
 
+		// GNews v4 documents its key parameter only as `apikey` (or the
+		// X-Api-Key header); docs.gnews.io/authentication. This sent `token`,
+		// which v4 does not document (ro#1062).
 		$params = array(
-			'token'   => $this->apiKey,
+			'apikey'  => $this->apiKey,
 			'lang'    => $opts['language'],
 			'country' => $opts['country'],
 			'max'     => min(100, max(1, (int) $opts['max']))
@@ -55,7 +58,8 @@ class Websites_News_Gnews extends Websites_News implements Websites_News_Interfa
 		} else {
 			$url = $this->endpoint . '/top-headlines';
 			if ($opts['category']) {
-				$params['topic'] = $opts['category']; // best-effort mapping
+				// v4 top-headlines documents `category`, not `topic` (ro#1062)
+				$params['category'] = $opts['category'];
 			}
 		}
 
