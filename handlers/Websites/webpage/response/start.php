@@ -11,7 +11,13 @@ function Websites_webpage_response_start($params)
 
 	$message = Q::ifset($r, 'message', null);
 
-	$stream = Websites_Webpage::createStream($r['data'], 'Websites/webpage/conversation');
+	// ro#931: only the url comes from the request. createStream() also reads
+	// "asUserId" and "publisherId" from its params, which may come only from
+	// a server-side caller's $params (see Websites/webpage POST).
+	$stream = Websites_Webpage::createStream(array_merge(
+		Q::take($params, array('asUserId', 'publisherId')),
+		array('url' => Q::ifset($r, 'data', 'url', null))
+	), 'Websites/webpage/conversation');
 
 	if (!$stream) {
 		throw new Exception("stream not found");
@@ -29,15 +35,17 @@ function Websites_webpage_response_start($params)
 		'fromPublisherId' => $stream->publisherId,
 		'fromStreamName' => $stream->name
 	))->fetchDbRows()) {
+		// ro#931: the category is the caller's choice, so relate as the
+		// acting user with the access check, not skipAccess (see
+		// Websites/webpage POST).
 		Streams::relate(
-			null,
+			$userId,
 			$communityId,
 			$mainChatCategory,
 			$chatRelationType,
 			$stream->publisherId,
 			$stream->name,
 			array(
-				'skipAccess' => true,
 				'weight' => time()
 			)
 		);

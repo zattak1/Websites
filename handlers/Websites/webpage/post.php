@@ -12,7 +12,15 @@ function Websites_webpage_post($params)
 	if (parse_url($request['url'], PHP_URL_SCHEME) === null) {
 		$request['url'] = 'http://'.$request['url'];
 	}
-	$stream = Websites_Webpage::createStream($request);
+	// ro#931: createStream() reads "asUserId" (who gets max access to the
+	// stream) and "publisherId" (who publishes it) from its params, so the
+	// merged request let any caller create a webpage stream as any user.
+	// Those two may come only from a server-side caller's $params; the
+	// request supplies the url alone.
+	$stream = Websites_Webpage::createStream(array_merge(
+		Q::take($params, array('asUserId', 'publisherId')),
+		array('url' => $request['url'])
+	));
 
 	Q_Response::setSlot('publisherId', $stream->publisherId);
 	Q_Response::setSlot('streamName', $stream->name);
@@ -25,7 +33,10 @@ function Websites_webpage_post($params)
 			throw new Exception("stream not found");
 		}
 
-		$userId = Q::ifset($request, 'userId', Users::loggedInUser(true)->id);
+		// ro#931: the acting user is the logged-in one (or a server-side
+		// caller's $params), never a request "userId", which let the caller
+		// author the first message as anyone.
+		$userId = Q::ifset($params, 'userId', Users::loggedInUser(true)->id);
 		$currentCommunity = Users::currentCommunityId(true);
 
 		$communityId = Q::ifset($request, 'categoryStream', 'publisherId', $currentCommunity);
@@ -40,15 +51,21 @@ function Websites_webpage_post($params)
 			'fromPublisherId' => $stream->publisherId,
 			'fromStreamName' => $stream->name
 		))->fetchDbRows()) {
+			// ro#931: the category is the caller's choice, so relate as the
+			// acting user WITH the access check (write level "relate" on the
+			// category); skipAccess let a caller relate into any publisher's
+			// category. Both in-tree callers still pass: a community's
+			// Streams/chats/main is public writeLevel 23
+			// (Communities/config/streams.json), and Streams/user/urls is
+			// the caller's own.
 			Streams::relate(
-				null,
+				$userId,
 				$communityId,
 				$mainChatCategory,
 				$chatRelationType,
 				$stream->publisherId,
 				$stream->name,
 				array(
-					'skipAccess' => true,
 					'weight' => time()
 				)
 			);
